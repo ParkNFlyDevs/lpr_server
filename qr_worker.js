@@ -4,7 +4,6 @@ const Jimp = require("jimp");
 
 async function scanQR(dataUrl) {
     //dataUrl = dataUrl.split(',')[1]
-    console.log("SCANNING")
     return new Promise((resolve, reject) => {
         Jimp.read(Buffer.from(dataUrl, 'base64'), function (err, img) {
             if (!err) {
