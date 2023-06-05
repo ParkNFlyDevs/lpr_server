@@ -7,33 +7,47 @@ const { Snapshot } = require("axis-snapshot");
 const QrCode = require('qrcode-reader')
 const Quagga = require('@ericblade/quagga2')
 const Jimp = require("jimp");
+var MjpegCamera = require('mjpeg-camera');
+
+process.title = "kiosk_cam_server"
 
 app.use(cors());
 app.use(express.json({ limit: '5mb' }))
 //app.use(bodyParser.json({ limit: '500kb' }));
 
+
+let cameraFeed = new MjpegCamera({
+  name: 'kiosk_cam',
+  url: `http://${'localhost'}/mjpg/video.mjpg`,
+});
+
 async function scanBarcode(dataUrl) {
   return new Promise((resolve, reject) => {
-    Quagga.decodeSingle({
-      decoder: {
-        readers: ["code_128_reader", "code_39_reader"] // List of active readers
-      },
-      locate: true, // try to locate the barcode in the image
-      src: dataUrl, // or 'data:image/jpg;base64,' + data
-    }, function (result) {
-      if (result?.codeResult) {
-        console.log("result", result.codeResult.code);
-        resolve(result.codeResult.code)
-      } else {
-        console.log("not detected");
-        resolve(false)
-      }
-    });
+    try {
+      Quagga.decodeSingle({
+        decoder: {
+          readers: ["code_128_reader", "code_39_reader"] // List of active readers
+        },
+        locate: true, // try to locate the barcode in the image
+        src: 'data:image/jpg;base64,' + dataUrl, // or 'data:image/jpg;base64,' + data
+      }, function (result) {
+        if (result?.codeResult) {
+          console.log("result", result.codeResult.code);
+          resolve(result.codeResult.code)
+        } else {
+          console.log("barcode not detected");
+          resolve(false)
+        }
+      });
+    } catch (e) {
+      console.log("BARCODE ERR:", e);
+      resolve(false)
+    }
   })
 }
 
 async function scanQR(dataUrl) {
-  dataUrl = dataUrl.split(',')[1]
+  //dataUrl = dataUrl.split(',')[1]
   return new Promise((resolve, reject) => {
     Jimp.read(Buffer.from(dataUrl, 'base64'), function (err, img) {
       if (!err) {
@@ -41,7 +55,7 @@ async function scanQR(dataUrl) {
 
         qr.callback = function (err, value) {
           if (err) {
-            console.log(err)
+            console.log("QR.ERR", err)
             resolve(false);//console.error(err);
 
             // TODO handle error
@@ -52,7 +66,8 @@ async function scanQR(dataUrl) {
 
         qr.decode(img.bitmap)
       } else {
-        console.log(err)
+        console.log("JIMP.ERR", err, dataUrl)
+
         resolve(false)
       }
     })
@@ -74,19 +89,56 @@ async function scanQR(dataUrl) {
 });*/
 
 app.post("/scan", async (req, res) => {
-  let dataUrl = req.body.code
+  cameraFeed.getScreenshot(async function (err, result) {
+    if (!err) {
+      let dataUrl = result.toString('base64')
 
-  let qr, barcode;
+      if (dataUrl.substring(0, 4) != '/9j/') {
+        res.send(false)
+        return;
+      }
 
-  try {
-    qr = await scanQR(dataUrl);
-    barcode = await scanBarcode(dataUrl)
-    res.send(qr || barcode)
-  } catch (e) {
-    console.log(e)
-    res.send(false)
-  }
+      let qr, barcode;
 
+      try {
+        barcode = await scanBarcode(dataUrl)
+        qr = await scanQR(dataUrl);
+        res.send(qr || barcode)
+      } catch (e) {
+        console.log("?????", e)
+        res.send(false)
+      }
+    } else {
+      console.log(JSON.stringify(err))
+      if (err.code == "ECONNREFUSED") {
+        res.send("NO FEED")
+      }
+    }
+  })
+
+})
+
+app.get('/startCamFeed', async (req, res) => {
+  if (cameraFeed.connection)
+    cameraFeed.stop()
+  cameraFeed = new MjpegCamera({
+    name: 'kiosk_cam',
+    url: `http://${req.query.ip}/mjpg/video.mjpg`,
+  });
+
+  cameraFeed.start();
+
+  res.sendStatus(200)
+
+})
+
+app.get('/frame', async (req, res) => {
+  cameraFeed.getScreenshot(function (err, result) {
+    if (!err) {
+      console.log(result.toString('base64'))
+      return res.send(result.toString('base64'));
+    }
+  })
 })
 
 app.get("/check", async (req, res) => {
