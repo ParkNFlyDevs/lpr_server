@@ -6,11 +6,10 @@ const { Connection, Protocol, UserAccounts } = require("axis-configuration")
 const { Snapshot } = require("axis-snapshot");
 const QrCode = require('qrcode-reader')
 const Quagga = require('@ericblade/quagga2')
-const Jimp = require("jimp");
 var MjpegCamera = require('mjpeg-camera');
-
+const { Worker } = require("worker_threads");
 process.title = "kiosk_cam_server"
-
+const THREAD_COUNT = 4;
 app.use(cors());
 app.use(express.json({ limit: '5mb' }))
 //app.use(bodyParser.json({ limit: '500kb' }));
@@ -20,61 +19,6 @@ let cameraFeed = new MjpegCamera({
   name: 'kiosk_cam',
   url: `http://${'localhost'}/mjpg/video.mjpg`,
 });
-
-async function scanBarcode(dataUrl) {
-  return new Promise((resolve, reject) => {
-    try {
-      Quagga.decodeSingle({
-        decoder: {
-          readers: ["code_128_reader", "code_39_reader"] // List of active readers
-        },
-        locate: true, // try to locate the barcode in the image
-        src: 'data:image/jpg;base64,' + dataUrl, // or 'data:image/jpg;base64,' + data
-      }, function (result) {
-        if (result?.codeResult) {
-          console.log("result", result.codeResult.code);
-          resolve(result.codeResult.code)
-        } else {
-          console.log("barcode not detected");
-          resolve(false)
-        }
-      });
-    } catch (e) {
-      console.log("BARCODE ERR:", e);
-      resolve(false)
-    }
-  })
-}
-
-async function scanQR(dataUrl) {
-  //dataUrl = dataUrl.split(',')[1]
-  return new Promise((resolve, reject) => {
-    Jimp.read(Buffer.from(dataUrl, 'base64'), function (err, img) {
-      if (!err) {
-        let qr = new QrCode();
-
-        qr.callback = function (err, value) {
-          if (err) {
-            console.log("QR.ERR", err)
-            resolve(false);//console.error(err);
-
-            // TODO handle error
-          } else {
-            resolve(value.result);
-          }
-        };
-
-        qr.decode(img.bitmap)
-      } else {
-        console.log("JIMP.ERR", err, dataUrl)
-
-        resolve(false)
-      }
-    })
-
-
-  })
-}
 
 
 /*app.get("/getImage", async (req, res) => {
@@ -88,10 +32,45 @@ async function scanQR(dataUrl) {
   return res.send(Buffer.from(image).toString("base64"));
 });*/
 
+function createQRWorker(dataUrl) {
+  return new Promise(function (resolve, reject) {
+    const worker = new Worker("./qr_worker.js", {
+      workerData: { thread_count: THREAD_COUNT, dataUrl: dataUrl },
+    });
+    worker.on("message", (data) => {
+      resolve(data);
+    });
+    worker.on("error", (msg) => {
+      reject(`An error ocurred: ${msg}`);
+    });
+  });
+}
+
+function createBarcodeWorker(dataUrl) {
+  return new Promise(function (resolve, reject) {
+    const worker = new Worker("./barcode_worker.js", {
+      workerData: { thread_count: THREAD_COUNT, dataUrl: dataUrl },
+    });
+    worker.on("message", (data) => {
+      resolve(data);
+    });
+    worker.on("error", (msg) => {
+      reject(`An error ocurred: ${msg}`);
+    });
+  });
+}
+
+app.get('/test_worker', async (req, res) => {
+
+})
+
 app.post("/scan", async (req, res) => {
   cameraFeed.getScreenshot(async function (err, result) {
-    if (!err) {
+    console.log('got ss')
+    if (!err && result) {
       let dataUrl = result.toString('base64')
+      const workerPromises = [];
+
 
       if (dataUrl.substring(0, 4) != '/9j/') {
         res.send(false)
@@ -100,17 +79,21 @@ app.post("/scan", async (req, res) => {
 
       let qr, barcode;
 
+      workerPromises.push(createQRWorker(dataUrl))
+      workerPromises.push(createBarcodeWorker(dataUrl))
+
       try {
-        barcode = await scanBarcode(dataUrl)
-        qr = await scanQR(dataUrl);
+        const thread_results = await Promise.all(workerPromises);
+        console.log(thread_results)
+        qr = thread_results[0]
+        barcode = thread_results[1]
         res.send(qr || barcode)
       } catch (e) {
-        console.log("?????", e)
-        res.send(false)
+        console.log("ERRRRRRRR", e)
       }
     } else {
       console.log(JSON.stringify(err))
-      if (err.code == "ECONNREFUSED") {
+      if (err?.code == "ECONNREFUSED") {
         res.send("NO FEED")
       }
     }
