@@ -31,7 +31,7 @@ async function scanBarcode(dataUrl) {
         locate: true, // try to locate the barcode in the image
         src: 'data:image/jpg;base64,' + dataUrl, // or 'data:image/jpg;base64,' + data
       }, function (result) {
-        if (result?.codeResult) {
+        if (result && result.codeResult) {
           console.log("result", result.codeResult.code);
           resolve(result.codeResult.code)
         } else {
@@ -110,7 +110,7 @@ app.post("/scan", async (req, res) => {
       }
     } else {
       console.log(JSON.stringify(err))
-      if (err.code == "ECONNREFUSED") {
+      if (err && err.code == "ECONNREFUSED") {
         res.send("NO FEED")
       }
     }
