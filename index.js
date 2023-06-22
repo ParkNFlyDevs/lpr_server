@@ -104,12 +104,12 @@ app.post("/scan", async (req, res) => {
         barcode = await scanBarcode(dataUrl)
         qr = await scanQR(dataUrl);
         if (barcode) {
-          console.log("SENDING", JSON.stringify(barcode))
-          res.send(JSON.stringify(barcode))
+          console.log("SENDING", JSON.stringify({ "result": barcode.toString() }))
+          res.send({ "result": barcode.toString() })
         }
         else if (qr) {
-          console.log("SENDING", JSON.stringify(qr))
-          res.send(JSON.stringify(qr))
+          console.log("SENDING", JSON.stringify({ "result": qr.toString() }))
+          res.send({ "result": qr.toString() })
         } else
           res.send(false)
       } catch (e) {
