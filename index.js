@@ -8,9 +8,6 @@ const QrCode = require('qrcode-reader')
 const Quagga = require('@ericblade/quagga2')
 const Jimp = require("jimp");
 var MjpegCamera = require('mjpeg-camera');
-const dbr = require('barcode4nodejs');
-dbr.initLicense("t0072oQAAABn5LXfc62RkQOfHj+QpDV/atAt/iiWMyAoeUZyv66RC1xO4eNvqSOM0d9fLmvmims+5vvY//0ib1iNaVoidzLPYFCJR;t0072oQAAADqW0gMBP0jx9eW8IA9q5lV2lvPeV2FpHutKAG+azcunrCOnxMq55PkowNwrYtvsdVEAfslRJ9HEktsUP+AP008A5SLK")
-//BarcodeReader.engineResourcePath = "https://cdn.jsdelivr.net/npm/dynamsoft-javascript-barcode/dist/";
 
 process.title = "kiosk_cam_server"
 
@@ -92,9 +89,8 @@ async function scanQR(dataUrl) {
 });*/
 
 app.post("/scan", async (req, res) => {
-  //console.log("SCANNING")
   cameraFeed.getScreenshot(async function (err, result) {
-    if (!err && result) {
+    if (!err) {
       let dataUrl = result.toString('base64')
 
       if (dataUrl.substring(0, 4) != '/9j/') {
@@ -102,20 +98,20 @@ app.post("/scan", async (req, res) => {
         return;
       }
 
-      let code;
-      //console.log(dataUrl + "\n\n\\n\n\n\n\n\n")
-      try {
-        dbr.decodeBase64Async(dataUrl, dbr.formats.OneD | dbr.formats.PDF417 | dbr.formats.QRCode | dbr.formats.DataMatrix | dbr.formats.Aztec, function (err, results) {
-          if (results.length > 0) {
-            code = results[0].value;
-          }
-          if (code) {
-            console.log("SENDING", JSON.stringify({ "result": code.toString() }))
-            res.send({ "result": code.toString() })
-          } else
-            res.send(false)
-        })
+      let qr, barcode;
 
+      try {
+        barcode = await scanBarcode(dataUrl)
+        qr = await scanQR(dataUrl);
+        if (barcode) {
+          console.log("SENDING", JSON.stringify({ "result": barcode.toString() }))
+          res.send({ "result": barcode.toString() })
+        }
+        else if (qr) {
+          console.log("SENDING", JSON.stringify({ "result": qr.toString() }))
+          res.send({ "result": qr.toString() })
+        } else
+          res.send(false)
       } catch (e) {
         console.log("?????", e)
         res.send(false)
@@ -133,7 +129,6 @@ app.post("/scan", async (req, res) => {
 app.get('/startCamFeed', async (req, res) => {
   if (cameraFeed.connection)
     cameraFeed.stop()
-  console.log("IP CONNECTING IS", req.query.ip)
   cameraFeed = new MjpegCamera({
     name: 'kiosk_cam',
     url: `http://${req.query.ip}/mjpg/video.mjpg`,
