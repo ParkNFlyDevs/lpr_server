@@ -9,7 +9,7 @@ const Quagga = require('@ericblade/quagga2')
 const Jimp = require("jimp");
 var MjpegCamera = require('mjpeg-camera');
 const dbr = require('barcode4nodejs');
-dbr.initLicense("t0072oQAAABn5LXfc62RkQOfHj+QpDV/atAt/iiWMyAoeUZyv66RC1xO4eNvqSOM0d9fLmvmims+5vvY//0ib1iNaVoidzLPYFCJR;t0072oQAAADqW0gMBP0jx9eW8IA9q5lV2lvPeV2FpHutKAG+azcunrCOnxMq55PkowNwrYtvsdVEAfslRJ9HEktsUP+AP008A5SLK")
+dbr.initLicense("DLS2eyJoYW5kc2hha2VDb2RlIjoiMTAyMTI0MjAzLTEwMjEyNTUyNSIsIm1haW5TZXJ2ZXJVUkwiOiJodHRwczovL21sdHMuZHluYW1zb2Z0LmNvbS8iLCJvcmdhbml6YXRpb25JRCI6IjEwMjEyNDIwMyIsInN0YW5kYnlTZXJ2ZXJVUkwiOiJodHRwczovL3NsdHMuZHluYW1zb2Z0LmNvbS8iLCJjaGVja0NvZGUiOjE4OTIyODM5Mzl9")
 //BarcodeReader.engineResourcePath = "https://cdn.jsdelivr.net/npm/dynamsoft-javascript-barcode/dist/";
 
 process.title = "kiosk_cam_server"
@@ -24,72 +24,17 @@ let cameraFeed = new MjpegCamera({
   url: `http://${'localhost'}/mjpg/video.mjpg`,
 });
 
-async function scanBarcode(dataUrl) {
-  return new Promise((resolve, reject) => {
-    try {
-      Quagga.decodeSingle({
-        decoder: {
-          readers: ["code_128_reader", "code_39_reader"] // List of active readers
-        },
-        locate: true, // try to locate the barcode in the image
-        src: 'data:image/jpg;base64,' + dataUrl, // or 'data:image/jpg;base64,' + data
-      }, function (result) {
-        if (result && result.codeResult) {
-          console.log("result", result.codeResult.code);
-          resolve(result.codeResult.code)
-        } else {
-          console.log("barcode not detected");
-          resolve(false)
-        }
-      });
-    } catch (e) {
-      console.log("BARCODE ERR:", e);
-      resolve(false)
-    }
-  })
-}
 
-async function scanQR(dataUrl) {
-  //dataUrl = dataUrl.split(',')[1]
-  return new Promise((resolve, reject) => {
-    Jimp.read(Buffer.from(dataUrl, 'base64'), function (err, img) {
-      if (!err) {
-        let qr = new QrCode();
-
-        qr.callback = function (err, value) {
-          if (err) {
-            console.log("QR.ERR", err)
-            resolve(false);//console.error(err);
-
-            // TODO handle error
-          } else {
-            resolve(value.result);
-          }
-        };
-
-        qr.decode(img.bitmap)
-      } else {
-        console.log("JIMP.ERR", err, dataUrl)
-
-        resolve(false)
-      }
-    })
-
-
-  })
-}
-
-
-/*app.get("/getImage", async (req, res) => {
+app.get("/getImage", async (req, res) => {
   let ip = req.query.ip
-  const connection = new Connection(Protocol.Http, ip, 80, '****', '**********');
+  const connection = new Connection(Protocol.Http, ip, 80, 'root', 'pnf.12@admin');
 
   const snapshot = new Snapshot(connection);
 
   let image = await snapshot.jpeg({ compression: 20, rotation: 180 })
   console.log(Buffer.from(image).toString("base64"))
   return res.send(Buffer.from(image).toString("base64"));
-});*/
+});
 
 app.post("/scan", async (req, res) => {
   //console.log("SCANNING")
